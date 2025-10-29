@@ -1,3 +1,85 @@
+package com.example.loanservice.service;
+
+import com.example.loanservice.dto.LoanRequest;
+import com.example.loanservice.entity.Loan;
+import com.example.loanservice.exception.BookUnavailableException;
+import com.example.loanservice.exception.LoanNotFoundException;
+import com.example.loanservice.kafka.LoanEventPublisher;
+import com.example.loanservice.repository.LoanRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class LoanServiceImpl implements LoanService {
+
+    private final LoanRepository loanRepository;
+    private final RestTemplate restTemplate;
+    private final LoanEventPublisher publisher;
+
+    private static final String BOOK_SERVICE_URL = "http://book-service/api/books/";
+
+    @Override
+    public Loan borrowBook(LoanRequest request) {
+        // Check book availability from Book Service
+        Boolean isAvailable = restTemplate.getForObject(
+                BOOK_SERVICE_URL + request.getBookId() + "/available", Boolean.class);
+
+        if (isAvailable == null || !isAvailable) {
+            throw new BookUnavailableException("Book not available for loan");
+        }
+
+        Loan loan = Loan.builder()
+                .bookId(request.getBookId())
+                .userId(request.getUserId())
+                .issueDate(LocalDate.now())
+                .dueDate(LocalDate.now().plusDays(14))
+                .status("BORROWED")
+                .build();
+
+        Loan saved = loanRepository.save(loan);
+
+        // Update book status and send Kafka event
+        restTemplate.put(BOOK_SERVICE_URL + request.getBookId() + "/mark-borrowed", null);
+        publisher.publishLoanEvent("BOOK_BORROWED", saved);
+
+        return saved;
+    }
+
+    @Override
+    public Loan returnBook(Long loanId) {
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new LoanNotFoundException("Loan not found: " + loanId));
+
+        loan.setReturnDate(LocalDate.now());
+        loan.setStatus("RETURNED");
+
+        // Fine calculation
+        long daysOverdue = ChronoUnit.DAYS.between(loan.getDueDate(), loan.getReturnDate());
+        if (daysOverdue > 0) {
+            loan.setFineAmount(daysOverdue * 10.0);
+        }
+
+        Loan updated = loanRepository.save(loan);
+        publisher.publishLoanEvent("BOOK_RETURNED", updated);
+
+        // Notify Book Service to mark available
+        restTemplate.put(BOOK_SERVICE_URL + loan.getBookId() + "/mark-available", null);
+
+        return updated;
+    }
+
+    @Override
+    public List<Loan> getLoansByUser(Long userId) {
+        return loanRepository.findByUserId(userId);
+    }
+}
+
 # library-management-system
 
 Absolutely — I’ll deliver a complete, production-ready starter implementation for the Library Management System (microservices) covering:
