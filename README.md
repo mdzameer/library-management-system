@@ -1,3 +1,40 @@
+
+package com.example.loanservice.controller;
+
+import com.example.loanservice.dto.LoanRequest;
+import com.example.loanservice.entity.Loan;
+import com.example.loanservice.service.LoanService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/loans")
+@RequiredArgsConstructor
+public class LoanController {
+
+    private final LoanService loanService;
+
+    @PostMapping("/borrow")
+    public ResponseEntity<Loan> borrowBook(@RequestBody LoanRequest request) {
+        return ResponseEntity.ok(loanService.borrowBook(request));
+    }
+
+    @PutMapping("/return/{loanId}")
+    public ResponseEntity<Loan> returnBook(@PathVariable Long loanId) {
+        return ResponseEntity.ok(loanService.returnBook(loanId));
+    }
+
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<Loan>> getUserLoans(@PathVariable Long userId) {
+        return ResponseEntity.ok(loanService.getLoansByUser(userId));
+    }
+}
+
+
+
 package com.example.loanservice.service;
 
 import com.example.loanservice.dto.LoanRequest;
